@@ -1,0 +1,52 @@
+services:
+  api:
+    build: ./api
+    container_name: arxiv_api_service
+    ports:
+      - "8000:8000"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka
+    ports:
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  producer:
+    build:
+      context: ./producer
+    container_name: producer_service
+    depends_on:
+      - kafka
+    volumes:
+      - ./arxiv-metadata-oai-snapshot.json:/data/arxiv-metadata-oai-snapshot.json:ro
+    environment:
+      KAFKA_BROKER: kafka:9092
+      MAX_PAPERS_TO_SEND: 100
+      STREAM_RATE_SECONDS: 1.0
+
+  consumer:
+    build:
+      context: ./consumer
+    container_name: consumer_service
+    depends_on:
+      - kafka
+      - api
+    environment:
+      KAFKA_BROKER: kafka:9092
+      API_URL: http://api:8000/v1/predict
